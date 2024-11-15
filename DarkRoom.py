@@ -273,8 +273,13 @@ class DarkRoom(Plugin):
                 ret_str += "[DarkRoom] 服刑人员名单:"  
                 logger.debug(ret_str)  
                 for row in rows:  
-                    user_name, release_date, notes = row  # 解包选定的字段  
-                    ret_str += f"\n[{user_name}] \n    出狱时间: {release_date}\n    入狱原因: {notes}"  
+                    # 解包选定的字段  
+                    user_name, release_date, notes = row  
+                    # 转换时间戳为日期时间对象
+                    release_date_dt = datetime.fromtimestamp(int(release_date))
+                    # 格式化为 '年月日时'  
+                    release_date_formatted = release_date_dt.strftime('%Y/%m/%d %H:%M') 
+                    ret_str += f"\n[{user_name}] \n    出狱时间: {release_date_formatted}\n    入狱原因: {notes}"  
                     logger.debug(f"[DarkRoom] {user_name}, 出狱时间: {release_date}, 入狱原因: {notes}")  
 
             return ret_str  
