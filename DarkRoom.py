@@ -42,12 +42,12 @@ class DarkRoom(Plugin):
             self.config = self._load_config_template()
         # 存储用户消息计数和触发次数  
         self.user_message_tracker = {}  
-        # 5分钟时间窗 
-        self.message_time_frame = timedelta(minutes=3)  
         # 用于存储用户的最后事件时间(防抖动)
         self.last_event_time = {}  
         # 加载管理员列表
         self.admin_list = self.config.get("admin_list", [])
+        self.message_time_frame = self.config.get("message_time_frame")
+        self.trigger_count = self.config.get("trigger_count")
         # 注册事件处理程序
         self.handlers[Event.ON_HANDLE_CONTEXT] = self.on_handle_context  
         logger.info("[DarkRoom] 插件初始化完毕")  
@@ -146,10 +146,10 @@ class DarkRoom(Plugin):
             # 返回影响的行数  
             deleted_rows = cursor.rowcount  
             if deleted_rows > 0:  
-                ret_str = f"[DarkRoom] 用户 {user_name} 的条目已被移出小黑屋。"
+                ret_str = f"[DarkRoom] 用户 [{user_name}] 已被移出小黑屋。"
                 logger.info(ret_str)  
             else:  
-                ret_str = f"[DarkRoom] 用户 {user_name} 的条目未找到。"
+                ret_str = f"[DarkRoom] 用户 [{user_name}] 不在牢里。"
                 logger.warning(ret_str)  
 
             # 提交更改  
@@ -403,7 +403,7 @@ class DarkRoom(Plugin):
                     self.user_message_tracker[user_id]['last_message'] = content  
                     self.user_message_tracker[user_id]['first_message_time'] = current_time  
                 # 连续相同消息达到3条
-                if self.user_message_tracker[user_id]['trigger_count'] >= 3:  
+                if self.user_message_tracker[user_id]['trigger_count'] >= self.trigger_count:  
                     # 确保用户不在小黑屋中
                     if not self.get_entry(user_id):    
                         # 将用户关进小黑屋 10 分钟  

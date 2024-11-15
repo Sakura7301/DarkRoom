@@ -1,3 +1,5 @@
 {
-    "admin_list":["管理员ID"]
+    "admin_list":["管理员ID"],
+    "trigger_count":5,
+    "message_time_frame":5
 }
