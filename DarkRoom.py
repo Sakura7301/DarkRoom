@@ -17,7 +17,7 @@ import os  # 确保导入 os 模块
 
 @plugins.register(  
     name="DarkRoom",  
-    desire_priority=99,  
+    desire_priority=998,  
     hidden=False,  
     desc="小黑屋",  
     version="1.0",  
