@@ -7,6 +7,8 @@
     "message_time_frame":5,
     # 防抖动间隔
     "interval_to_prevent_shaking":2,
+    # 封禁时长
+    "duration_of_ban":20,
     # 是否检查违禁词
     "check_prohibited_words":true,
     # 违禁词列表
