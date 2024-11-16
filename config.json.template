@@ -2,11 +2,11 @@
     # 管理员ID
     "admin_list":["管理员私聊ID", "管理员群组ID"],
     # 刷屏最大次数
-    "trigger_count":3,
+    "trigger_count":2,
     # 检查刷屏的时间间隔
     "message_time_frame":5,
     # 防抖动间隔
-    "interval_to_prevent_shaking":2,
+    "interval_to_prevent_shaking":1,
     # 封禁时长
     "duration_of_ban":20,
     # 是否检查违禁词

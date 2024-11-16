@@ -253,7 +253,7 @@ class DarkRoom(Plugin):
             # 提取一条行
             entry = cursor.fetchone()  
             if entry is None:  
-                logger.warning(f"没有找到 user_id: {user_id}")  
+                logger.debug(f"没有找到 user_id: {user_id}")  
             return entry   
         except sqlite3.Error as e:  
             self.close_db_connection_and_cursor()  
@@ -336,11 +336,11 @@ class DarkRoom(Plugin):
             if not self.get_entry(user_id):    
                 # 将用户关进小黑屋 {self.duration_of_ban} 分钟  
                 self.add_entry(user_id, user_name, new_timestamp, '刷屏')  
-                logger.info(f"[DarkRoom] 用户 {user_name} ({user_id}) 已被关进小黑屋 {self.duration_of_ban} 分钟。")  
+                logger.info(f"[DarkRoom] 用户 {user_name} 已被关进小黑屋 {self.duration_of_ban} 分钟。")  
                 # 回复给用户
                 reply = Reply()  
                 reply.type = ReplyType.TEXT  
-                reply.content = "你在刷屏哦~ 被关进小黑屋10分钟！🙀"  
+                reply.content = f"你在刷屏哦~ 被关进小黑屋{self.duration_of_ban}分钟！😏"  
                 e_context['reply'] = reply  
                 # 中断事件传递
                 e_context.action = EventAction.BREAK_PASS  
@@ -395,8 +395,8 @@ class DarkRoom(Plugin):
             reply.type = ReplyType.TEXT
             # 执行解除操作
             reply.content = self.delete_entry_by_user_name(release_user_name)
-            # 重置计数器为0，因为这是管理员命令新消息 
-            self.user_message_tracker[user_id]['trigger_count'] = 0 
+            # 重置计数器为1 
+            self.user_message_tracker[user_id]['trigger_count'] = 1 
             logger.info(f"[DarkRoom] 用户 {user_name} ({user_id}) 已被移出小黑屋，计数器重置。")
             # 回复给用户
             e_context['reply'] = reply
@@ -438,58 +438,69 @@ class DarkRoom(Plugin):
         if e_context["context"].type not in [ContextType.TEXT]:  
             logger.debug("[DarkRoom] 上下文类型不是文本，无需处理")  
             return  
-        # 获取消息内容并去除首尾空格  
-        content = e_context["context"].content.strip()   
-        # 获取用户信息  
-        msg = e_context['context']['msg']  
-        user_id = msg.from_user_id  
-        user_name = msg.from_user_nickname   
-        # 获取秒级时间戳
-        current_time = time.time()  
-        # 防抖动机制：检查与上一次事件的时间差  
-        if user_id in self.last_event_time:  
-            if current_time - self.last_event_time[user_id] < self.interval_to_prevent_shaking:
-                logger.debug(f"[DarkRoom] 用户 {user_id} 在短时间内重复触发，忽略处理")  
-                return  
-        # 更新最后事件的时间  
-        self.last_event_time[user_id] = current_time  
+        try:
+            # 获取消息内容并去除首尾空格  
+            content = e_context["context"].content.strip()   
+            # 获取用户信息  
+            msg = e_context['context']['msg']  
+            # 检查是否为群消息
+            if msg.is_group:
+                # 群消息，获取真实ID
+                user_id = msg._rawmsg.ActualUserName
+                user_name = msg._rawmsg.ActualNickName
+            else:
+                # 私聊消息，获取用户ID和昵称
+                user_id = msg.from_user_id  
+                user_name = msg.from_user_nickname   
+            # 获取秒级时间戳
+            current_time = time.time()  
+            # 防抖动机制：检查与上一次事件的时间差  
+            if user_id in self.last_event_time:  
+                if current_time - self.last_event_time[user_id] < self.interval_to_prevent_shaking:
+                    logger.debug(f"[DarkRoom] 用户 {user_id} 在短时间内重复触发，忽略处理")  
+                    return  
+            # 更新最后事件的时间  
+            self.last_event_time[user_id] = current_time  
 
-        # 检查用户的消息跟踪器是否存在  
-        if user_id not in self.user_message_tracker:  
-            # 初始化消息记录和触发次数  
-            self.user_message_tracker[user_id] = {  
-                # 记录最后一条消息
-                'last_message': None,
-                # 该用户的触发次数 
-                'trigger_count': 0,
-                # 记录第一次发消息的时间    
-                'first_message_time': None  
-            }  
+            # 检查用户的消息跟踪器是否存在  
+            if user_id not in self.user_message_tracker:  
+                # 初始化消息记录和触发次数  
+                self.user_message_tracker[user_id] = {  
+                    # 记录最后一条消息
+                    'last_message': None,
+                    # 该用户的触发次数 
+                    'trigger_count': 0,
+                    # 记录第一次发消息的时间    
+                    'first_message_time': None  
+                }  
 
-        # 检查解除命令
-        if "~移除" in content:
-            # 移除小黑屋中的指定用户
-            self.remove_dark_room(user_name, user_id, content, e_context)
-            return
-        elif "~小黑屋" == content:
-            # 查看小黑屋
-            self.display_dark_room(user_name, user_id, e_context)
-            return
-        else:
-            # 检查用户是否在小黑屋中  
-            entry = self.get_entry(user_id)  
-            if entry:  
-                # 获取剩余时间
-                release_date = entry[2] 
-                # 检查用户是否需要移除小黑屋
-                self.check_if_need_remove_user_from_darkroom(release_date, user_id, user_name, e_context)
+            # 检查解除命令
+            if "~移除" in content:
+                # 移除小黑屋中的指定用户
+                self.remove_dark_room(user_name, user_id, content, e_context)
                 return
-            else:  
-                # 检查用户是否有违规行为
-                self.check_user_has_violated(content, user_name, user_id, e_context)
-                # 更新用户消息触发器
-                self.update_message_tracker(content, current_time, user_name, user_id)
+            elif "~小黑屋" == content:
+                # 查看小黑屋
+                self.display_dark_room(user_name, user_id, e_context)
                 return
+            else:
+                # 检查用户是否在小黑屋中  
+                entry = self.get_entry(user_id)  
+                if entry:  
+                    # 获取剩余时间
+                    release_date = entry[2] 
+                    # 检查用户是否需要移除小黑屋
+                    self.check_if_need_remove_user_from_darkroom(release_date, user_id, user_name, e_context)
+                    return
+                else:  
+                    # 检查用户是否有违规行为
+                    self.check_user_has_violated(content, user_name, user_id, e_context)
+                    # 更新用户消息触发器
+                    self.update_message_tracker(content, current_time, user_name, user_id)
+                    return
+        except Exception as e:
+            logger.error(f"[DarkRoom] 处理上下文事件时出错: {e}")
+            return
 
     def get_help_text(self, **kwargs):  
         """获取帮助文本"""  
