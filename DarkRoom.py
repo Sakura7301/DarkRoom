@@ -524,8 +524,9 @@ class DarkRoom(Plugin):
                 # 创建回复对象
                 reply = Reply()
                 reply.type = ReplyType.TEXT
+                reply.content = "[DarkRoom]\n"
                 # 处理命令消息
-                reply.content = self.parse_instruct(user_name, user_id, msg.is_group, content)
+                reply.content += self.parse_instruct(user_name, user_id, msg.is_group, content)
                 # 回复给用户
                 e_context['reply'] = reply
                 # 中断事件传递
