@@ -433,8 +433,14 @@ class DarkRoom(Plugin):
         # 检查是否有管理员权限
         if self.check_admin_list(user_id):
             # 重置计数器
+            if '@' in user_name:
+                # 去除@
+                actual_name = user_name.lstrip('@') 
+            else:
+                actual_name = user_name
+            # 重置计数器
             self.user_message_tracker[user_id]['trigger_count'] = 1 
-            return self.delete_entry_by_user_name(user_name)
+            return self.delete_entry_by_user_name(actual_name)
         else:
             return "[DarkRoom] 你没有管理员权限，无法解除小黑屋里的成员。😹"
     
