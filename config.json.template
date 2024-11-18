@@ -1,6 +1,6 @@
 {
     # 管理员ID
-    "admin_list":["管理员私聊ID", "管理员群组ID"],
+    "admin_password":"密码",
     # 刷屏最大次数
     "trigger_count":2,
     # 检查刷屏的时间间隔

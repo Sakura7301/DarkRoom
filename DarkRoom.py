@@ -1,10 +1,12 @@
-import json  
+
 import re
+import os
+import sys  
 import time
+import json  
 import plugins  
 import sqlite3  
 import signal  
-import sys  
 from typing import Optional  
 from datetime import datetime, timedelta  
 from config import conf  
@@ -13,7 +15,6 @@ from bridge.reply import Reply, ReplyType
 from common.log import logger   
 from plugins import *  
 import threading  
-import os  # 确保导入 os 模块  
 
 @plugins.register(  
     name="DarkRoom",  
@@ -43,8 +44,6 @@ class DarkRoom(Plugin):
         self.user_message_tracker = {}  
         # 用于存储用户的最后事件时间(防抖动)
         self.last_event_time = {}  
-        # 加载管理员列表
-        self.admin_list = self.config.get("admin_list", [])
         # 加载刷屏限时
         self.message_time_frame = self.config.get("message_time_frame")
         # 加载刷屏最大次数
@@ -56,13 +55,17 @@ class DarkRoom(Plugin):
         # 加载违禁词配置
         self.check_prohibited_words = self.config.get("check_prohibited_words")
         self.prohibited_words = self.config.get("prohibited_words", [])
+        # 加载管理员密码
+        self.admin_password = self.config.get("admin_password")
+        # 初始化管理员列表
+        self.admin_list = []        
         # 注册事件处理程序
         self.handlers[Event.ON_HANDLE_CONTEXT] = self.on_handle_context  
         logger.info("[DarkRoom] 插件初始化完毕")  
 
-    def check_admin_list(self, content):
+    def check_admin_list(self, user_id):
         # 检查关键词   
-        return any(keyword in content for keyword in self.admin_list)  
+        return any(keyword in user_id for keyword in self.admin_list)  
 
     def get_db_connection(self):  
         # 检查是否存在本地存储的连接和游标
@@ -302,18 +305,30 @@ class DarkRoom(Plugin):
         self.close_db_connection_and_cursor()  
     
     def update_message_tracker(self, content, current_time, user_name, user_id):
-        # 检查消息时间窗内是否有连续相同消息
-        if content == self.user_message_tracker[user_id]['last_message']:  
-            # 如果相同，增加计数  
-            self.user_message_tracker[user_id]['trigger_count'] += 1  
-            logger.debug(f"[DarkRoom] 用户 {user_name} ({user_id}) 连续发送相同消息，触发次数: {self.user_message_tracker[user_id]['trigger_count']}")
-        else:  
-            # 如果不同，重置计数器为1，因为现在是新消息  
-            self.user_message_tracker[user_id]['trigger_count'] = 1
-            logger.debug(f"[DarkRoom] 用户 {user_name} ({user_id}) 连续发送不同消息，重置触发次数。")
-            # 更新最后一条消息和时间  
-            self.user_message_tracker[user_id]['last_message'] = content  
-            self.user_message_tracker[user_id]['first_message_time'] = current_time
+        # 检查用户的消息跟踪器是否存在  
+        if user_id not in self.user_message_tracker:  
+            # 初始化消息记录和触发次数  
+            self.user_message_tracker[user_id] = {  
+                # 记录最后一条消息
+                'last_message': content,
+                # 该用户的触发次数 
+                'trigger_count': 1,
+                # 记录第一次发消息的时间    
+                'first_message_time': current_time  
+            }  
+        else:
+            # 检查消息是否重复
+            if content == self.user_message_tracker[user_id]['last_message']:  
+                # 如果相同，增加计数  
+                self.user_message_tracker[user_id]['trigger_count'] += 1  
+                logger.debug(f"[DarkRoom] 用户 {user_name} ({user_id}) 连续发送相同消息，触发次数: {self.user_message_tracker[user_id]['trigger_count']}")
+            else:  
+                # 如果不同，重置计数器为1，因为现在是新消息  
+                self.user_message_tracker[user_id]['trigger_count'] = 1
+                logger.debug(f"[DarkRoom] 用户 {user_name} ({user_id}) 连续发送不同消息，重置触发次数。")
+                # 更新最后一条消息和时间  
+                self.user_message_tracker[user_id]['last_message'] = content  
+                self.user_message_tracker[user_id]['first_message_time'] = current_time
 
     def check_user_prohibited_words(self, content, user_name, user_id):
         if self.check_prohibited_words:
@@ -362,56 +377,95 @@ class DarkRoom(Plugin):
             # 用户未违禁，无需处理
             return  
 
-    def display_dark_room(self, user_name, user_id, e_context):
+    def display_dark_room(self, user_id):
         # 检查是否有管理员权限
         if self.check_admin_list(user_id):
-            # 创建回复对象
-            reply = Reply()
-            reply.type = ReplyType.TEXT
             # 获取牢房人员名单
-            reply.content = self.display_entries()
-            # 回复给用户
-            e_context['reply'] = reply
-            # 中断事件传递
-            e_context.action = EventAction.BREAK_PASS
-            return
+            return self.display_entries()
         else:
-            # 创建回复对象
-            reply = Reply()
-            reply.type = ReplyType.TEXT
-            reply.content = "你没有管理员权限，无法查看小黑屋。😹"
-            e_context['reply'] = reply
-            # 中断事件传递
-            e_context.action = EventAction.BREAK_PASS
-            return
-    def remove_dark_room(self, user_name, user_id, content, e_context):
+            # 没有管理员权限，无法查看小黑屋
+            return "你没有管理员权限，无法查看小黑屋。😹"
+
+    def authenticate(self, password, user_id, is_group) -> str:
+        if is_group:
+            return "请勿在群聊中认证"
+
+        if user_id in self.admin_list:
+            return "管理员账号无需认证"
+            
+        # 检查密码是否正确
+        if password == self.admin_password:
+            # 认证成功，将用户添加到管理员列表中
+            self.admin_list.append(user_id)
+            return "认证成功"
+        else:
+            return "认证失败"
+
+    def parse_instruct(self, user_name, user_id, is_group, content) -> str:
+        try:
+            # 去除斜杠同时分割指令和参数
+            parts = content[1:].split(' ', 1)  
+            # 获取指令类型和参数  
+            instruct_type = parts[0]  # 第一个部分是指令类型  
+            instruct_args = parts[1] if len(parts) > 1 else ''  # 第二部分是指令参数  
+            logger.info(f"content: {content}")
+            logger.info(f"[DarkRoom] 指令类型: {instruct_type}, 指令参数: {instruct_args}")
+            # 鉴权
+            if instruct_type == "auth":
+                # 执行认证操作
+                return self.authenticate(instruct_args, user_id, is_group)
+            elif instruct_type == "release":
+                # 移除小黑屋中的指定用户
+                return self.remove_dark_room(instruct_args, user_id)
+            elif instruct_type == "show":
+                # 查看小黑屋
+                return self.display_dark_room(user_id)
+            elif instruct_type == "releaseall":
+                # 释放所有小黑屋成员
+                return self.release_dark_room(user_id)
+            else:
+                return f"[DarkRoom] 未知指令: {instruct_type}"
+        except Exception as e:
+            err_str = f"[DarkRoom] 指令解析错误: {e}"
+            logger.error(err_str)
+            return err_str
+    
+    def remove_dark_room(self, user_name, user_id):
         # 检查是否有管理员权限
         if self.check_admin_list(user_id):
-            #有管理员权限，执行解除操作, 使用正则表达式提取 ~移除 后的内容  
-            match = re.search(r'~移除\s*(\S+)', content) 
-            release_user_name = match.group(1) if match else ""
-            # 创建回复对象
-            reply = Reply()
-            reply.type = ReplyType.TEXT
-            # 执行解除操作
-            reply.content = self.delete_entry_by_user_name(release_user_name)
-            # 重置计数器为1 
+            # 重置计数器
             self.user_message_tracker[user_id]['trigger_count'] = 1 
-            logger.info(f"[DarkRoom] 用户 {user_name} ({user_id}) 已被移出小黑屋，计数器重置。")
-            # 回复给用户
-            e_context['reply'] = reply
-            # 中断事件传递
-            e_context.action = EventAction.BREAK_PASS
-            return
+            logger.info(f"[DarkRoom] 用户 {user_name} ({user_id}) 已被移出小黑屋。")
+            return self.delete_entry_by_user_name(user_name)
         else:
-            # 创建回复对象
-            reply = Reply()
-            reply.type = ReplyType.TEXT
-            reply.content = "你没有管理员权限，无法解除小黑屋里的成员。😹"
-            e_context['reply'] = reply
-            # 中断事件传递
-            e_context.action = EventAction.BREAK_PASS
-            return
+            return "你没有管理员权限，无法解除小黑屋里的成员。😹"
+    
+    def release_dark_room(self, user_id):  
+        try:  
+            # 检查是否有管理员权限
+            if self.check_admin_list(user_id):
+                # 检查数据库连接和光标  
+                self.check_connection_and_cursor()  
+                # 获取数据库连接和光标  
+                conn, cursor = self.get_db_connection()  
+                # 执行删除所有操作  
+                cursor.execute(f'DELETE FROM {self.db_table_name}')  
+                # 提交更改  
+                conn.commit()  
+                logger.info(f"[DarkRoom] 数据表 {self.db_table_name} 中的所有条目已删除。")  
+                # 重置所有用户的技术
+                for user_id in self.user_message_tracker:  
+                    self.user_message_tracker[user_id]['trigger_count'] = 1 
+                return "大赦天下！牢房清空辣~😸"
+            else:
+                return "你没有管理员权限，无法解除小黑屋里的成员。😹"
+        except sqlite3.Error as e:  
+            err_str = f"[DarkRoom] 数据库错误: {e}"
+            logger.error(err_str) 
+            return err_str
+        finally:  
+            # 关闭数据库连接和光标  
+            self.close_db_connection_and_cursor()
 
     def check_if_need_remove_user_from_darkroom(self, release_date, user_id, user_name, e_context):
         # 检查是否需要释放用户
@@ -462,26 +516,20 @@ class DarkRoom(Plugin):
             # 更新最后事件的时间  
             self.last_event_time[user_id] = current_time  
 
-            # 检查用户的消息跟踪器是否存在  
-            if user_id not in self.user_message_tracker:  
-                # 初始化消息记录和触发次数  
-                self.user_message_tracker[user_id] = {  
-                    # 记录最后一条消息
-                    'last_message': None,
-                    # 该用户的触发次数 
-                    'trigger_count': 0,
-                    # 记录第一次发消息的时间    
-                    'first_message_time': None  
-                }  
+            # 更新用户消息触发器
+            self.update_message_tracker(content, current_time, user_name, user_id)
 
-            # 检查解除命令
-            if "~移除" in content:
-                # 移除小黑屋中的指定用户
-                self.remove_dark_room(user_name, user_id, content, e_context)
-                return
-            elif "~小黑屋" == content:
-                # 查看小黑屋
-                self.display_dark_room(user_name, user_id, e_context)
+            # 检查消息类型，是否是命令
+            if content.startswith("/"):
+                # 创建回复对象
+                reply = Reply()
+                reply.type = ReplyType.TEXT
+                # 处理命令消息
+                reply.content = self.parse_instruct(user_name, user_id, msg.is_group, content)
+                # 回复给用户
+                e_context['reply'] = reply
+                # 中断事件传递
+                e_context.action = EventAction.BREAK_PASS
                 return
             else:
                 # 检查用户是否在小黑屋中  
@@ -495,8 +543,6 @@ class DarkRoom(Plugin):
                 else:  
                     # 检查用户是否有违规行为
                     self.check_user_has_violated(content, user_name, user_id, e_context)
-                    # 更新用户消息触发器
-                    self.update_message_tracker(content, current_time, user_name, user_id)
                     return
         except Exception as e:
             logger.error(f"[DarkRoom] 处理上下文事件时出错: {e}")
