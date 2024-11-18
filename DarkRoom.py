@@ -408,7 +408,6 @@ class DarkRoom(Plugin):
             # 获取指令类型和参数  
             instruct_type = parts[0]  # 第一个部分是指令类型  
             instruct_args = parts[1] if len(parts) > 1 else ''  # 第二部分是指令参数  
-            logger.info(f"content: {content}")
             logger.info(f"[DarkRoom] 指令类型: {instruct_type}, 指令参数: {instruct_args}")
             # 鉴权
             if instruct_type == "auth":
@@ -524,7 +523,7 @@ class DarkRoom(Plugin):
                 reply = Reply()
                 reply.type = ReplyType.TEXT
                 # 处理命令消息
-                reply.content += self.parse_instruct(user_name, user_id, msg.is_group, content)
+                reply.content = self.parse_instruct(user_name, user_id, msg.is_group, content)
                 # 回复给用户
                 e_context['reply'] = reply
                 # 中断事件传递
