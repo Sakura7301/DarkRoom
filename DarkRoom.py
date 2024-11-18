@@ -435,7 +435,6 @@ class DarkRoom(Plugin):
         if self.check_admin_list(user_id):
             # 重置计数器
             self.user_message_tracker[user_id]['trigger_count'] = 1 
-            logger.info(f"[DarkRoom] 用户 {user_name} ({user_id}) 已被移出小黑屋。")
             return self.delete_entry_by_user_name(user_name)
         else:
             return "[DarkRoom] 你没有管理员权限，无法解除小黑屋里的成员。😹"
@@ -525,7 +524,7 @@ class DarkRoom(Plugin):
                 reply = Reply()
                 reply.type = ReplyType.TEXT
                 # 处理命令消息
-                reply.content = self.parse_instruct(user_name, user_id, msg.is_group, content)
+                reply.content += self.parse_instruct(user_name, user_id, msg.is_group, content)
                 # 回复给用户
                 e_context['reply'] = reply
                 # 中断事件传递
