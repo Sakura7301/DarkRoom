@@ -384,22 +384,22 @@ class DarkRoom(Plugin):
             return self.display_entries()
         else:
             # 没有管理员权限，无法查看小黑屋
-            return "你没有管理员权限，无法查看小黑屋。😹"
+            return "[DarkRoom] 你没有管理员权限，无法查看小黑屋。😹"
 
     def authenticate(self, password, user_id, is_group) -> str:
         if is_group:
-            return "请勿在群聊中认证"
+            return "[DarkRoom] 请勿在群聊中认证"
 
         if user_id in self.admin_list:
-            return "管理员账号无需认证"
+            return "[DarkRoom] 管理员账号无需认证"
             
         # 检查密码是否正确
         if password == self.admin_password:
             # 认证成功，将用户添加到管理员列表中
             self.admin_list.append(user_id)
-            return "认证成功"
+            return "[DarkRoom] 认证成功"
         else:
-            return "认证失败"
+            return "[DarkRoom] 认证失败"
 
     def parse_instruct(self, user_name, user_id, is_group, content) -> str:
         try:
@@ -438,7 +438,7 @@ class DarkRoom(Plugin):
             logger.info(f"[DarkRoom] 用户 {user_name} ({user_id}) 已被移出小黑屋。")
             return self.delete_entry_by_user_name(user_name)
         else:
-            return "你没有管理员权限，无法解除小黑屋里的成员。😹"
+            return "[DarkRoom] 你没有管理员权限，无法解除小黑屋里的成员。😹"
     
     def release_dark_room(self, user_id):  
         try:  
@@ -456,9 +456,9 @@ class DarkRoom(Plugin):
                 # 重置所有用户的技术
                 for user_id in self.user_message_tracker:  
                     self.user_message_tracker[user_id]['trigger_count'] = 1 
-                return "大赦天下！牢房清空辣~😸"
+                return "[DarkRoom] 大赦天下！牢房清空辣~😸"
             else:
-                return "你没有管理员权限，无法解除小黑屋里的成员。😹"
+                return "[DarkRoom] 你没有管理员权限，无法解除小黑屋里的成员。😹"
         except sqlite3.Error as e:  
             err_str = f"[DarkRoom] 数据库错误: {e}"
             logger.error(err_str) 
