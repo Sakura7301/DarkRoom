@@ -535,8 +535,10 @@ class DarkRoom(Plugin):
                     self.check_if_need_remove_user_from_darkroom(release_date, user_id, user_name, e_context)
                     return
                 else:
-                    # 检查用户是否有违规行为
-                    self.check_user_has_violated(content, user_name, user_id, e_context)
+                    # 管理员不会受到任何限制
+                    if self.check_admin_list(user_id) is False:
+                        # 检查用户是否有违规行为
+                        self.check_user_has_violated(content, user_name, user_id, e_context)
                     return
         except Exception as e:
             logger.error(f"[DarkRoom] 处理上下文事件时出错: {e}")
