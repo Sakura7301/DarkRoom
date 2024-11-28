@@ -308,10 +308,10 @@ class DarkRoom(Plugin):
             }
         else:
             # 检查消息是否重复
-            if content == self.user_message_tracker[user_id]['last_message']:
-                # 如果相同，增加计数
-                self.user_message_tracker[user_id]['trigger_count'] += 1
-                logger.debug(f"[DarkRoom] 用户 {user_name} ({user_id}) 连续发送相同消息，触发次数: {self.user_message_tracker[user_id]['trigger_count']}")
+            if (content == self.user_message_tracker[user_id]['last_message']) and (current_time - self.user_message_tracker[user_id]['first_message_time'] <= (self.message_time_frame * 60)):
+                    # 如果消息重复，且在5分钟内，增加触发次数
+                    self.user_message_tracker[user_id]['trigger_count'] += 1
+                    logger.debug(f"[DarkRoom] 用户 {user_name} ({user_id}) 连续发送相同消息，触发次数: {self.user_message_tracker[user_id]['trigger_count']}")
             else:
                 # 如果不同，重置计数器为1，因为现在是新消息
                 self.user_message_tracker[user_id]['trigger_count'] = 1
