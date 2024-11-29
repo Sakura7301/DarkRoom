@@ -424,8 +424,8 @@ class DarkRoom(Plugin):
         if self.check_admin_list(user_id):
             # 重置计数器
             if '@' in user_name:
-                # 去除@
-                actual_name = user_name.lstrip('@')
+                # 获取'@'符号后面的所有内容
+                actual_name = user_name.split('@', 1)[-1]
             else:
                 actual_name = user_name
             # 重置计数器
