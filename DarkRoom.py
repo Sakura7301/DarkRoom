@@ -454,7 +454,7 @@ class DarkRoom(Plugin):
                 # 释放所有小黑屋成员
                 return self.release_dark_room(user_id)
             else:
-                return f"[DarkRoom] 未知指令: {instruct_type}"
+                return None
         except Exception as e:
             err_str = f"[DarkRoom] 指令解析错误: {e}"
             logger.error(err_str)
@@ -628,23 +628,28 @@ class DarkRoom(Plugin):
                 user_group_name = msg.actual_user_nickname
             else:
                 user_name = msg.from_user_nickname
-            logger.info(f"[DarkRoom] 收到来自[{user_name}|{user_group_name}|{user_id}]的消息")
+            logger.info(f"[DarkRoom] debug[{user_name}|{user_group_name}|{user_id}]的消息")
 
             # 更新用户消息触发器
             self.update_message_tracker(content, current_time, user_name, user_id)
 
             # 检查消息类型，是否是命令
             if content.startswith("/"):
-                # 创建回复对象
-                reply = Reply()
-                reply.type = ReplyType.TEXT
-                # 处理命令消息
-                reply.content = self.parse_instruct(user_id, msg, content)
-                # 回复给用户
-                e_context['reply'] = reply
-                # 中断事件传递
-                e_context.action = EventAction.BREAK_PASS
-                return
+                # 获取处理结果
+                handle_instruct_result = self.parse_instruct(user_id, msg, content)
+                if handle_instruct_result is None:
+                    # 无需回复
+                    return
+                else:
+                    # 创建回复对象
+                    reply = Reply()
+                    reply.type = ReplyType.TEXT
+                    reply.content = handle_instruct_result
+                    # 回复给用户
+                    e_context['reply'] = reply
+                    # 中断事件传递
+                    e_context.action = EventAction.BREAK_PASS
+                    return
             else:
                 # 检查用户是否在小黑屋中
                 entry = self.get_entry(user_id)
