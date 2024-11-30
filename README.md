@@ -55,6 +55,13 @@
 - 提交 issues 到项目的 GitHub 页面。
 - 发送邮件至 [sakuraduck@foxmail.com]。
 
+## 赞助
+开发不易，我的朋友，如果你想请我喝杯咖啡的话(笑)
+
+<img src="https://github.com/user-attachments/assets/db273642-1787-4195-af52-7b14c8733405" alt="image" width="300"/> 
+
+
 ## 许可
 此项目采用 Apache License 版本 2.0，详细信息请查看 [LICENSE](LICENSE)。
+
 ---
