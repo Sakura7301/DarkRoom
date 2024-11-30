@@ -86,7 +86,7 @@ class DarkRoom(Plugin):
     def check_and_read_database(self):
         # 检查数据库是否存在
         if not os.path.exists(self.db_name):
-            logger.warn(f"[DarkRoom] 数据库 {self.db_name} 不存在，正在创建数据库...")
+            logger.warning(f"[DarkRoom] 数据库 {self.db_name} 不存在，正在创建数据库...")
             try:
                 # 连接到数据库
                 conn, cursor = self.get_db_connection()
@@ -95,6 +95,7 @@ class DarkRoom(Plugin):
                 CREATE TABLE IF NOT EXISTS {self.db_table_name} (
                     user_id TEXT PRIMARY KEY,
                     user_name TEXT NOT NULL,
+                    user_group_name TEXT,
                     release_date INTEGER NOT NULL,
                     notes
                 )
@@ -102,6 +103,7 @@ class DarkRoom(Plugin):
                 # 提交更改
                 conn.commit()
                 logger.info("[DarkRoom] 数据库已创建")
+                logger.info(f"[DarkRoom] 表 {self.db_table_name} 已创建。")
             except sqlite3.Error as e:
                 logger.error(f"数据库错误: {e}")
         else:
@@ -120,6 +122,7 @@ class DarkRoom(Plugin):
                         user_id TEXT PRIMARY KEY,
                         user_name TEXT NOT NULL,
                         release_date INTEGER NOT NULL,
+                        user_group_name TEXT,
                         notes TEXT
                     )
                     ''')
@@ -132,19 +135,20 @@ class DarkRoom(Plugin):
                 self.close_db_connection_and_cursor()
                 logger.error(f"[DarkRoom] 数据库错误: {e}")
 
-    def delete_entry_by_user_name(self, user_name):
+    def delete_entry_by_user_id(self, user_name, user_id):
         """
-        根据用户姓名删除黑名单中的指定条目。
+        根据用户ID删除黑名单中的指定条目。
 
         参数:
-        user_name (str): 要删除的用户姓名。
+        user_id (str): 要删除的用户ID。
         """
+        logger.info(f"[DarkRoom] 尝试从小黑屋移除用户 {user_name} {user_id} 。")
         try:
             ret_str = ""
             # 获取数据库连接和光标
             conn, cursor = self.get_db_connection()
             # 构建删除 SQL 语句
-            cursor.execute(f'DELETE FROM {self.db_table_name} WHERE user_name = ?', (user_name,))
+            cursor.execute(f'DELETE FROM {self.db_table_name} WHERE user_id = ?', (user_id,))
             # 返回影响的行数
             deleted_rows = cursor.rowcount
             if deleted_rows > 0:
@@ -158,14 +162,47 @@ class DarkRoom(Plugin):
             conn.commit()
             return ret_str
         except sqlite3.Error as e:
-            ret_str = f"[DarkRoom] 数据库错误: {e}, user_name: {user_name}, type: {type(user_name)}"
+            ret_str = f"[DarkRoom] 数据库错误: {e}, user_id: {user_id}, type: {type(user_id)}"
             logger.error(ret_str)
             return ret_str
         finally:
             # 关闭数据库连接和光标
             self.close_db_connection_and_cursor()
 
-    def add_entry(self, user_id, user_name, release_date, notes):
+    def delete_entry_by_user_name(self, user_name):
+            """
+            根据用户姓名删除黑名单中的指定条目。
+
+            参数:
+            user_name (str): 要删除的用户姓名。
+            """
+            try:
+                ret_str = ""
+                # 获取数据库连接和光标
+                conn, cursor = self.get_db_connection()
+                # 构建删除 SQL 语句
+                cursor.execute(f'DELETE FROM {self.db_table_name} WHERE user_name = ?', (user_name,))
+                # 返回影响的行数
+                deleted_rows = cursor.rowcount
+                if deleted_rows > 0:
+                    ret_str = f"[DarkRoom] 用户 [{user_name}] 已被移出小黑屋。"
+                    logger.info(ret_str)
+                else:
+                    ret_str = f"[DarkRoom] 用户 [{user_name}] 不在牢里。"
+                    logger.warning(ret_str)
+
+                # 提交更改
+                conn.commit()
+                return ret_str
+            except sqlite3.Error as e:
+                ret_str = f"[DarkRoom] 数据库错误: {e}, user_name: {user_name}, type: {type(user_name)}"
+                logger.error(ret_str)
+                return ret_str
+            finally:
+                # 关闭数据库连接和光标
+                self.close_db_connection_and_cursor()
+
+    def add_entry(self, user_id, user_name, user_group_name, release_date, notes):
         try:
             # 检查数据库连接和光标
             self.check_connection_and_cursor()
@@ -173,13 +210,13 @@ class DarkRoom(Plugin):
             conn, cursor = self.get_db_connection()
             # 执行插入操作
             cursor.execute(f'''
-            INSERT INTO {self.db_table_name} (user_id, user_name, release_date, notes) VALUES (?, ?, ?, ?)
-            ''', (user_id, user_name, release_date, notes))
+            INSERT INTO {self.db_table_name} (user_id, user_name, user_group_name, release_date, notes) VALUES (?, ?, ?, ?, ?)
+            ''', (user_id, user_name, user_group_name, release_date, notes))
             # 提交更改
             conn.commit()
-            logger.info(f"[DarkRoom] 新条目已添加: |{user_name}|{release_date}|{notes}")
+            logger.info(f"[DarkRoom] 新条目已添加: |{user_name}|{user_group_name}|{release_date}|{notes}")
         except sqlite3.IntegrityError:
-            logger.warn("[DarkRoom] 用户 ID 已存在，添加失败。")
+            logger.warning("[DarkRoom] 用户 ID 已存在，添加失败。")
         except sqlite3.Error as e:
             self.close_db_connection_and_cursor()
             logger.error(f"[DarkRoom] 数据库错误: {e}")
@@ -197,12 +234,12 @@ class DarkRoom(Plugin):
             if cursor.rowcount > 0:
                 logger.info(f"[DarkRoom] 用户 ID 为 {user_id} 的条目已删除。")
             else:
-                logger.warn(f"[DarkRoom] 未找到用户 ID 为 {user_id} 的条目。")
+                logger.warning(f"[DarkRoom] 未找到用户 ID 为 {user_id} 的条目。")
         except sqlite3.Error as e:
             self.close_db_connection_and_cursor()
             logger.error(f"[DarkRoom] 数据库错误: {e}")
 
-    def update_entry(self, user_id, user_name=None, release_date=None, notes=None):
+    def update_entry(self, user_id, user_name=None, user_group_name=None, release_date=None, notes=None):
         try:
             # 检查数据库连接和光标
             self.check_connection_and_cursor()
@@ -214,6 +251,9 @@ class DarkRoom(Plugin):
             if user_name is not None:
                 updates.append("user_name = ?")
                 parameters.append(user_name)
+            if user_group_name is not None:
+                updates.append("user_group_name =?")
+                parameters.append(user_group_name)
             if release_date is not None:
                 updates.append("release_date = ?")
                 parameters.append(release_date)
@@ -230,7 +270,7 @@ class DarkRoom(Plugin):
                 conn.commit()
                 logger.info("[DarkRoom] 条目已更新。")
             else:
-                logger.warn("[DarkRoom] 未提供更新信息。")
+                logger.warning("[DarkRoom] 未提供更新信息。")
         except sqlite3.Error as e:
             self.close_db_connection_and_cursor()
             logger.error(f"[DarkRoom] 数据库错误: {e}")
@@ -261,27 +301,27 @@ class DarkRoom(Plugin):
             #获取数据库连接和光标
             conn, cursor = self.get_db_connection()
             # 执行查询
-            cursor.execute(f'SELECT user_name, release_date, notes FROM {self.db_table_name}')
+            cursor.execute(f'SELECT user_name, user_group_name, release_date, notes FROM {self.db_table_name}')
             # 提取所有行
             rows = cursor.fetchall()
 
             if not rows:
                 # 没有条目
                 ret_str += "[DarkRoom] 牢房里空荡荡的。继续保持喔~😸"
-                logger.warn(ret_str)
+                logger.warning(ret_str)
             else:
                 # 打印条目
                 ret_str += "[DarkRoom] 🐱服刑人员名单:"
                 logger.debug(ret_str)
                 for row in rows:
                     # 解包选定的字段
-                    user_name, release_date, notes = row
+                    user_name, user_group_name, release_date, notes = row
                     # 转换时间戳为日期时间对象
                     release_date_dt = datetime.fromtimestamp(int(release_date))
                     # 格式化为 '年月日时'
                     release_date_formatted = release_date_dt.strftime('%Y/%m/%d %H:%M')
-                    ret_str += f"\n[{user_name}] \n    出狱时间: {release_date_formatted}\n    入狱原因: {notes}"
-                    logger.debug(f"[DarkRoom] {user_name}, 出狱时间: {release_date}, 入狱原因: {notes}")
+                    ret_str += f"\n[{user_name}|{user_group_name}] \n    出狱时间: {release_date_formatted}\n    入狱原因: {notes}"
+                    logger.debug(f"[DarkRoom] {user_name}|{user_group_name}, 出狱时间: {release_date}, 入狱原因: {notes}")
 
             return ret_str
         except sqlite3.Error as e:
@@ -332,15 +372,16 @@ class DarkRoom(Plugin):
             # 未开启违禁词检查，不做任何事
             return False
 
-    def check_user_has_violated(self, content, user_name, user_id, e_context):
+    def check_user_has_violated(self, content, user_name, user_group_name, user_id, e_context):
         # 直接获取当前时间戳并加上10分钟，转换为整数
         new_timestamp = int((datetime.fromtimestamp(time.time()) + timedelta(minutes=self.duration_of_ban)).timestamp())
+        logger.debug(f"[DarkRoom] 用户 {user_name} 连续消息数: {self.user_message_tracker[user_id]['trigger_count']}")
         # 连续相同消息达到3条
         if self.user_message_tracker[user_id]['trigger_count'] >= self.trigger_count:
             # 确保用户不在小黑屋中
             if not self.get_entry(user_id):
                 # 将用户关进小黑屋 {self.duration_of_ban} 分钟
-                self.add_entry(user_id, user_name, new_timestamp, '刷屏')
+                self.add_entry(user_id, user_name, user_group_name, new_timestamp, '刷屏')
                 logger.info(f"[DarkRoom] 用户 {user_name} 已被关进小黑屋 {self.duration_of_ban} 分钟。")
                 # 回复给用户
                 reply = Reply()
@@ -354,7 +395,7 @@ class DarkRoom(Plugin):
             # 用户违禁
             logger.info(f"[DarkRoom] 用户 {user_name} ({user_id}) 触发违禁词，被关进小黑屋 {self.duration_of_ban} 分钟。😏")
             # 将用户关进小黑屋 {self.duration_of_ban} 分钟
-            self.add_entry(user_id, user_name, new_timestamp, '触发违禁词')
+            self.add_entry(user_id, user_name, user_group_name, new_timestamp, '触发违禁词')
             # 回复给用户
             reply = Reply()
             reply.type = ReplyType.TEXT
@@ -376,7 +417,7 @@ class DarkRoom(Plugin):
             # 没有管理员权限，无法查看小黑屋
             return "[DarkRoom] 你没有管理员权限，无法查看小黑屋。😹"
 
-    def authenticate(self, password, user_id, is_group) -> str:
+    def authenticate(self, instruct_content, user_id, is_group) -> str:
         if is_group:
             return "[DarkRoom] 请勿在群聊中认证"
 
@@ -384,28 +425,28 @@ class DarkRoom(Plugin):
             return "[DarkRoom] 管理员账号无需认证"
 
         # 检查密码是否正确
-        if password == self.admin_password:
+        if instruct_content == self.admin_password:
             # 认证成功，将用户添加到管理员列表中
             self.admin_list.append(user_id)
             return "[DarkRoom] 认证成功"
         else:
             return "[DarkRoom] 认证失败"
 
-    def parse_instruct(self, user_name, user_id, is_group, content) -> str:
+    def parse_instruct(self, user_id, msg, content) -> str:
         try:
             # 去除斜杠同时分割指令和参数
             parts = content[1:].split(' ', 1)
             # 获取指令类型和参数
             instruct_type = parts[0]  # 第一个部分是指令类型
-            instruct_args = parts[1] if len(parts) > 1 else ''  # 第二部分是指令参数
-            logger.info(f"[DarkRoom] 指令类型: {instruct_type}, 指令参数: {instruct_args}")
+            instruct_content = parts[1] if len(parts) > 1 else ''  # 第二部分是指令参数
+            logger.info(f"[DarkRoom] 指令类型: {instruct_type}, 指令内容: {instruct_content}")
             # 鉴权
             if instruct_type == "auth":
                 # 执行认证操作
-                return self.authenticate(instruct_args, user_id, is_group)
+                return self.authenticate(instruct_content, user_id, msg.is_group)
             elif instruct_type == "release":
                 # 移除小黑屋中的指定用户
-                return self.remove_dark_room(instruct_args, user_id)
+                return self.remove_dark_room(instruct_content, user_id)
             elif instruct_type == "show":
                 # 查看小黑屋
                 return self.display_dark_room(user_id)
@@ -419,20 +460,55 @@ class DarkRoom(Plugin):
             logger.error(err_str)
             return err_str
 
-    def remove_dark_room(self, user_name, user_id):
+    def get_user_id_by_name_or_group(self, target_name):
+        try:
+            # 检查数据库连接和光标
+            self.check_connection_and_cursor()
+            # 获取数据库连接和光标
+            conn, cursor = self.get_db_connection()
+            # 执行查询，将 user_name 和 user_group_name 同时作为筛选条件
+            cursor.execute(f'SELECT user_id FROM {self.db_table_name} WHERE user_name = ? OR user_group_name = ?', (target_name, target_name))
+            # 提取一条行
+            entry = cursor.fetchone()
+            if entry is None:
+                logger.debug(f"没有找到与 target_name: {target_name} 匹配的条目")
+                return None
+            return entry[0]  # 返回找到的第一个条目的 user_id
+        except sqlite3.Error as e:
+            logger.error(f"[DarkRoom] 数据库错误: {e}")
+            return None
+        finally:
+            # 关闭数据库连接和光标
+            self.close_db_connection_and_cursor()
+
+    def remove_dark_room(self, instruct_content, user_id):
+        ret_str = None
+        target_name = None
+        release_user_id = None
         # 检查是否有管理员权限
         if self.check_admin_list(user_id):
-            # 重置计数器
-            if '@' in user_name:
+            # 获取目标昵称
+            if '@' in instruct_content:
                 # 获取'@'符号后面的所有内容
-                actual_name = user_name.split('@', 1)[-1]
+                target_name = instruct_content.split('@', 1)[-1]
             else:
-                actual_name = user_name
-            # 重置计数器
-            self.user_message_tracker[user_id]['trigger_count'] = 1
-            return self.delete_entry_by_user_name(actual_name)
+                # 直接使用输入值
+                target_name = instruct_content
+            logger.info(f"[DarkRoom] 需要释放的目标昵称: {target_name}")
+
+            # 根据昵称从数据库查找用户ID
+            release_user_id = self.get_user_id_by_name_or_group(target_name)
+            if release_user_id is None:
+                ret_str = f"[DarkRoom] 找不到与{target_name}匹配的用户。😹"
+            else:
+                # 根据用户ID移除用户
+                ret_str = self.delete_entry_by_user_id(target_name, release_user_id)
+                # 重置该用户计数器
+                self.user_message_tracker[release_user_id]['trigger_count'] = 1
         else:
-            return "[DarkRoom] 你没有管理员权限，无法解除小黑屋里的成员。😹"
+            # 没有管理员权限，无法解除小黑屋里的成员
+            ret_str = "[DarkRoom] 你没有管理员权限，无法解除小黑屋里的成员。😹"
+        return ret_str
 
     def release_dark_room(self, user_id):
         try:
@@ -461,16 +537,16 @@ class DarkRoom(Plugin):
             # 关闭数据库连接和光标
             self.close_db_connection_and_cursor()
 
-    def check_if_need_remove_user_from_darkroom(self, release_date, user_id, user_name, e_context):
+    def check_if_need_remove_user_from_darkroom(self, release_date, user_id, user_name, user_group_name, e_context):
         # 检查是否需要释放用户
         if release_date < int(datetime.now().timestamp()):
             # 释放用户
             self.delete_entry(user_id)
-            logger.info(f"[DarkRoom] 用户 {user_name} 已被移除小黑屋。")
+            logger.info(f"[DarkRoom] 用户 {user_name}|{user_group_name} 已被移除小黑屋。")
             return
         else:
             dark_room_text = f"你已经在牢里了，享受牢饭吧。\n剩余时间: {release_date - int(datetime.now().timestamp())}s\n预计出狱时间：{datetime.fromtimestamp(release_date).strftime('%Y/%m/%d %H:%M')}"
-            logger.info(f"[DarkRoom] 用户 {user_name} 已在小黑屋中。")
+            logger.info(f"[DarkRoom] 用户 {user_name}|{user_group_name} 已在小黑屋中。")
             # 回复给用户
             reply = Reply()
             reply.type = ReplyType.TEXT
@@ -480,6 +556,38 @@ class DarkRoom(Plugin):
             e_context.action = EventAction.BREAK_PASS
             return
 
+    def find_user_name_by_user_id(self, msg, user_id):
+        """查找指定 UserName 的昵称"""
+        user_name = None
+        try:
+            # 获取成员列表
+            members = msg['User']['MemberList']
+            # 遍历成员列表
+            for member in members:
+                # 检查 UserName 是否匹配
+                if member['UserName'] == user_id:
+                    # 找到昵称
+                    user_name =  member['NickName']
+        except Exception as e:
+            logger.error(f"[DarkRoom] 查找用户昵称失败: {e}")
+        return user_name
+
+    def find_user_id_by_nickname(self, msg, user_name):
+        """查找指定昵称的 UserID"""
+        user_id = None
+        try:
+            # 获取成员列表
+            members = msg['User']['MemberList']
+
+            for member in members:
+                # 匹配用户ID
+                if member['NickName'] == user_name:
+                    # 返回找到的 UserID
+                    user_id = member['UserName']
+        except Exception as e:
+            logger.error(f"[DarkRoom] 查找用户昵称失败: {e}")
+        return user_id  # 如果未找到，返回 None
+
     def on_handle_context(self, e_context):
         """处理上下文事件"""
         # 检查上下文类型是否为文本
@@ -487,6 +595,10 @@ class DarkRoom(Plugin):
             logger.debug("[DarkRoom] 上下文类型不是文本，无需处理")
             return
         try:
+            # 初始化变量
+            user_id = None
+            user_name = None
+            user_group_name = None
             # 获取消息内容并去除首尾空格
             content = e_context["context"].content.strip()
             # 获取用户信息
@@ -494,12 +606,10 @@ class DarkRoom(Plugin):
             # 检查是否为群消息
             if msg.is_group:
                 # 群消息，获取真实ID
-                user_id = msg._rawmsg.ActualUserName
-                user_name = msg.actual_user_nickname
+                user_id = msg._rawmsg['ActualUserName']
             else:
-                # 私聊消息，获取用户ID和昵称
+                # 私聊消息，获取用户ID
                 user_id = msg.from_user_id
-                user_name = msg.from_user_nickname
             # 获取秒级时间戳
             current_time = time.time()
             # 防抖动机制：检查与上一次事件的时间差
@@ -507,8 +617,18 @@ class DarkRoom(Plugin):
                 if current_time - self.last_event_time[user_id] < self.interval_to_prevent_shaking:
                     logger.debug(f"[DarkRoom] 用户 {user_id} 在短时间内重复触发，忽略处理")
                     return
+
             # 更新最后事件的时间
             self.last_event_time[user_id] = current_time
+
+            # 检查是否为群消息
+            if msg.is_group:
+                # 获取真实昵称
+                user_name = self.find_user_name_by_user_id(msg._rawmsg, user_id)
+                user_group_name = msg.actual_user_nickname
+            else:
+                user_name = msg.from_user_nickname
+            logger.info(f"[DarkRoom] 收到来自[{user_name}|{user_group_name}|{user_id}]的消息")
 
             # 更新用户消息触发器
             self.update_message_tracker(content, current_time, user_name, user_id)
@@ -519,7 +639,7 @@ class DarkRoom(Plugin):
                 reply = Reply()
                 reply.type = ReplyType.TEXT
                 # 处理命令消息
-                reply.content = self.parse_instruct(user_name, user_id, msg.is_group, content)
+                reply.content = self.parse_instruct(user_id, msg, content)
                 # 回复给用户
                 e_context['reply'] = reply
                 # 中断事件传递
@@ -530,15 +650,15 @@ class DarkRoom(Plugin):
                 entry = self.get_entry(user_id)
                 if entry:
                     # 获取剩余时间
-                    release_date = entry[2]
+                    release_date = entry[3]
                     # 检查用户是否需要移除小黑屋
-                    self.check_if_need_remove_user_from_darkroom(release_date, user_id, user_name, e_context)
+                    self.check_if_need_remove_user_from_darkroom(release_date, user_id, user_name, user_group_name, e_context)
                     return
                 else:
                     # 管理员不会受到任何限制
                     if self.check_admin_list(user_id) is False:
                         # 检查用户是否有违规行为
-                        self.check_user_has_violated(content, user_name, user_id, e_context)
+                        self.check_user_has_violated(content, user_name, user_group_name, user_id, e_context)
                     return
         except Exception as e:
             logger.error(f"[DarkRoom] 处理上下文事件时出错: {e}")
