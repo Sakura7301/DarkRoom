@@ -7,6 +7,7 @@ from bridge.context import ContextType
 from bridge.reply import Reply, ReplyType
 from common.log import logger
 from plugins import *
+from config import conf
 import threading
 
 
@@ -21,6 +22,8 @@ class DarkRoom(Plugin):
     def __init__(self):
         # 初始化插件
         super().__init__()
+        # 获取协议类型
+        self.channel_type = conf().get("channel_type")
         # 初始化数据库路径
         self.db_name = "./plugins/DarkRoom/dark_room.db"
         # 初始化数据库表名
@@ -102,12 +105,12 @@ class DarkRoom(Plugin):
                 ''')
                 # 提交更改
                 conn.commit()
-                logger.info("[DarkRoom] 数据库已创建")
-                logger.info(f"[DarkRoom] 表 {self.db_table_name} 已创建。")
+                logger.debug("[DarkRoom] 数据库已创建")
+                logger.debug(f"[DarkRoom] 表 {self.db_table_name} 已创建。")
             except sqlite3.Error as e:
                 logger.error(f"数据库错误: {e}")
         else:
-            logger.info(f"[DarkRoom] 数据库 {self.db_name} 已存在，正在检查表...")
+            logger.debug(f"[DarkRoom] 数据库 {self.db_name} 已存在，正在检查表...")
             try:
                 # 连接到数据库
                 conn, cursor = self.get_db_connection()
@@ -128,9 +131,9 @@ class DarkRoom(Plugin):
                     ''')
                     # 提交更改
                     conn.commit()
-                    logger.info(f"[DarkRoom] 表 {self.db_table_name} 已创建。")
+                    logger.debug(f"[DarkRoom] 表 {self.db_table_name} 已创建。")
                 else:
-                    logger.info(f"[DarkRoom] 表 {self.db_table_name} 已存在。")
+                    logger.debug(f"[DarkRoom] 表 {self.db_table_name} 已存在。")
             except sqlite3.Error as e:
                 self.close_db_connection_and_cursor()
                 logger.error(f"[DarkRoom] 数据库错误: {e}")
@@ -603,13 +606,17 @@ class DarkRoom(Plugin):
             content = e_context["context"].content.strip()
             # 获取用户信息
             msg = e_context['context']['msg']
-            # 检查是否为群消息
-            if msg.is_group:
-                # 群消息，获取真实ID
-                user_id = msg._rawmsg['ActualUserName']
-            else:
-                # 私聊消息，获取用户ID
+            if self.channel_type == "gewechat":
+                # gewe协议无需区分真实ID
                 user_id = msg.from_user_id
+            else:
+                # # 检查是否为群消息
+                if msg.is_group:
+                    # 群消息，获取真实ID
+                    user_id = msg._rawmsg['ActualUserName']
+                else:
+                    # 私聊消息，获取用户ID
+                    user_id = msg.from_user_id
             # 获取秒级时间戳
             current_time = time.time()
             # 防抖动机制：检查与上一次事件的时间差
@@ -621,13 +628,18 @@ class DarkRoom(Plugin):
             # 更新最后事件的时间
             self.last_event_time[user_id] = current_time
 
-            # 检查是否为群消息
-            if msg.is_group:
-                # 获取真实昵称
-                user_name = self.find_user_name_by_user_id(msg._rawmsg, user_id)
-                user_group_name = msg.actual_user_nickname
+            if self.channel_type == "gewechat":
+                # gewe协议获取方式不一样
+                user_name = msg.actual_user_nickname
+                user_group_name = msg.other_user_nickname
             else:
-                user_name = msg.from_user_nickname
+                # 检查是否为群消息
+                if msg.is_group:
+                    # 获取真实昵称
+                    user_name = self.find_user_name_by_user_id(msg._rawmsg, user_id)
+                    user_group_name = msg.actual_user_nickname
+                else:
+                    user_name = msg.from_user_nickname
             logger.info(f"[DarkRoom] debug[{user_name}|{user_group_name}|{user_id}]的消息")
 
             # 更新用户消息触发器
